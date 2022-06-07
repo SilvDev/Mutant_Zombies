@@ -1,6 +1,6 @@
 /*
 *	Mutant Zombies
-*	Copyright (C) 2021 Silvers
+*	Copyright (C) 2022 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.13"
+#define PLUGIN_VERSION		"1.14"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,10 @@
 
 ========================================================================================
 	Change Log:
+
+1.14 (07-Jun-2022)
+	- Fixed mutant zombies spawning when their "random" data config setting values were set to "0". Thanks to "Winn" for reporting.
+	- Removed minimum and maximum value restriction for individual mutants "random" data config setting.
 
 1.13 (12-Sep-2021)
 	- L4D1: Fixed constantly spawning Mutant Zombies due to not restricting a line of code for L4D2.
@@ -157,7 +161,7 @@
 #define SOUND_EXPLODE5			"weapons/hegrenade/explode5.wav"
 
 
-static const char g_sSoundsZap[8][25]	=
+static const char g_sSoundsZap[8][25] =
 {
 	"ambient/energy/zap1.wav",
 	"ambient/energy/zap2.wav",
@@ -413,7 +417,7 @@ public void OnConfigsExecuted()
 	IsAllowed();
 }
 
-public void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	IsAllowed();
 }
@@ -496,7 +500,7 @@ bool IsAllowedGameMode()
 	return true;
 }
 
-public void OnGamemode(const char[] output, int caller, int activator, float delay)
+void OnGamemode(const char[] output, int caller, int activator, float delay)
 {
 	if( strcmp(output, "OnCoop") == 0 )
 		g_iCurrentMode = 1;
@@ -788,8 +792,6 @@ void LoadDataConfig()
 		g_iConfBombHealth =		hFile.GetNum("health",				0);
 		g_iConfBombLimit =		hFile.GetNum("limit",				0);
 		g_iConfBombRandom =		hFile.GetNum("random",				0);
-		if( g_iConfBombRandom )
-			g_iConfBombRandom =		Clamp(g_iConfBombRandom,		1000, 10);
 		g_iConfBombShake =		hFile.GetNum("shake",				0);
 		hFile.Rewind();
 	}
@@ -806,8 +808,6 @@ void LoadDataConfig()
 		g_iConfFireLimit =		hFile.GetNum("limit",				0);
 		g_iConfFireLimit =		Clamp(g_iConfFireLimit,				10);
 		g_iConfFireRandom =		hFile.GetNum("random",				0);
-		if( g_iConfFireRandom )
-			g_iConfFireRandom =		Clamp(g_iConfFireRandom,		1000, 10);
 		g_fConfFireTime =		hFile.GetFloat("time",				0.0);
 		g_iConfFireWalk =		hFile.GetNum("walk",				0);
 		hFile.Rewind();
@@ -824,8 +824,6 @@ void LoadDataConfig()
 		g_iConfGhostLimit =		Clamp(g_iConfGhostLimit,			10);
 		g_iConfGhostOpacity =	hFile.GetNum("opacity",				0);
 		g_iConfGhostRandom =	hFile.GetNum("random",				0);
-		if( g_iConfGhostRandom )
-			g_iConfGhostRandom =	Clamp(g_iConfGhostRandom,		1000, 10);
 		hFile.Rewind();
 	}
 
@@ -842,8 +840,6 @@ void LoadDataConfig()
 		g_iConfMindLimit =		hFile.GetNum("limit",				0);
 		g_iConfMindLimit =		Clamp(g_iConfMindLimit,				10);
 		g_iConfMindRandom =		hFile.GetNum("random",				0);
-		if( g_iConfMindRandom )
-			g_iConfMindRandom =		Clamp(g_iConfMindRandom,		1000, 10);
 		hFile.Rewind();
 	}
 
@@ -860,8 +856,6 @@ void LoadDataConfig()
 		g_iConfSmokeLimit =		hFile.GetNum("limit",				0);
 		g_iConfSmokeLimit =		Clamp(g_iConfSmokeLimit,			10);
 		g_iConfSmokeRandom =	hFile.GetNum("random",				0);
-		if( g_iConfSmokeRandom )
-			g_iConfSmokeRandom =	Clamp(g_iConfSmokeRandom,		1000, 10);
 		hFile.Rewind();
 	}
 
@@ -878,8 +872,6 @@ void LoadDataConfig()
 		g_iConfSpitLimit =		hFile.GetNum("limit",				0);
 		g_iConfSpitLimit =		Clamp(g_iConfSpitLimit,				10);
 		g_iConfSpitRandom =		hFile.GetNum("random",				0);
-		if( g_iConfSpitRandom )
-			g_iConfSpitRandom =		Clamp(g_iConfSpitRandom,		1000, 10);
 		g_fConfSpitTime =		hFile.GetFloat("time",				0.0);
 		g_iConfSpitWalk =		hFile.GetNum("walk",				0);
 		hFile.Rewind();
@@ -899,8 +891,6 @@ void LoadDataConfig()
 		g_iConfTeslaLimit =		hFile.GetNum("limit",				0);
 		g_iConfTeslaLimit =		Clamp(g_iConfTeslaLimit,			10);
 		g_iConfTeslaRandom =	hFile.GetNum("random",				0);
-		if( g_iConfTeslaRandom )
-			g_iConfTeslaRandom =	Clamp(g_iConfTeslaRandom,		1000, 10);
 		hFile.Rewind();
 	}
 
@@ -963,7 +953,7 @@ public void OnClientPutInServer(int client)
 	}
 }
 
-public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	if( damagetype == 128 && attacker > MaxClients && GetClientTeam(victim) == 2 )
 	{
@@ -1049,7 +1039,7 @@ public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &dam
 //					HURT PLAYERS
 // ====================================================================================================
 // Spit infected hurt, repeat hurt
-public Action TimerHurt(Handle timer, any userid)
+Action TimerHurt(Handle timer, any userid)
 {
 	int client = GetClientOfUserId(userid);
 	if( client && IsClientInGame(client) && IsPlayerAlive(client) )
@@ -1134,7 +1124,7 @@ void HookEvents(bool hook)
 }
 
 // Common Infected die, clean up effects
-public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
 	int common = event.GetInt("entityid");
 	if( common )
@@ -1194,7 +1184,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	}
 }
 
-public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	g_iLoadStatus = 0;
 	g_iPlayerSpawn = 0;
@@ -1203,14 +1193,14 @@ public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 	ResetPlugin();
 }
 
-public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
 	if( g_iPlayerSpawn == 1 && g_iRoundStart == 0 )
 		g_iLoadStatus = 1;
 	g_iRoundStart = 1;
 }
 
-public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	if( g_iPlayerSpawn == 0 && g_iRoundStart == 1 )
 		g_iLoadStatus = 1;
@@ -1222,7 +1212,7 @@ public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast
 // ====================================================================================================
 //					COMMANDS
 // ====================================================================================================
-public Action CmdMutantsRefresh(int client, int args)
+Action CmdMutantsRefresh(int client, int args)
 {
 	ResetPlugin(true);
 	LoadDataConfig();
@@ -1233,7 +1223,7 @@ public Action CmdMutantsRefresh(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantBomb(int client, int args)
+Action CmdMutantBomb(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 	g_bHookCommonBomb = true;
@@ -1241,7 +1231,7 @@ public Action CmdMutantBomb(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantFire(int client, int args)
+Action CmdMutantFire(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 	g_bHookCommonFire = true;
@@ -1249,7 +1239,7 @@ public Action CmdMutantFire(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantGhost(int client, int args)
+Action CmdMutantGhost(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 	g_bHookCommonGhost = true;
@@ -1257,7 +1247,7 @@ public Action CmdMutantGhost(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantMind(int client, int args)
+Action CmdMutantMind(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 
@@ -1286,7 +1276,7 @@ public Action CmdMutantMind(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantSmoke(int client, int args)
+Action CmdMutantSmoke(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 	g_bHookCommonSmoke = true;
@@ -1294,7 +1284,7 @@ public Action CmdMutantSmoke(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantSpit(int client, int args)
+Action CmdMutantSpit(int client, int args)
 {
 	if( !g_bLeft4Dead2 )
 	{
@@ -1308,7 +1298,7 @@ public Action CmdMutantSpit(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutantTesla(int client, int args)
+Action CmdMutantTesla(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 	g_bHookCommonTesla = true;
@@ -1316,7 +1306,7 @@ public Action CmdMutantTesla(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdMutants(int client, int args)
+Action CmdMutants(int client, int args)
 {
 	if( g_bCvarAllow == false || client == 0 ) return Plugin_Handled;
 
@@ -1373,14 +1363,14 @@ public void OnEntityCreated(int entity, const char[] classname)
 	{
 		// Mutant Zombie spawned by command OR random auto-spawn
 		if( g_bHookCommonSpawn
-		|| (g_iConfRandom && g_iSpawnAmount >= g_iConfRandom)
-		|| g_iSpawnBomb		>= g_iConfBombRandom
-		|| g_iSpawnFire		>= g_iConfFireRandom
-		|| g_iSpawnGhost	>= g_iConfGhostRandom
-		|| g_iSpawnMind		>= g_iConfMindRandom
-		|| g_iSpawnSmoke	>= g_iConfSmokeRandom
-		|| g_iSpawnSpit		>= g_iConfSpitRandom && g_bLeft4Dead2
-		|| g_iSpawnTesla	>= g_iConfTeslaRandom )
+		|| (g_iConfRandom		&& g_iSpawnAmount	>= g_iConfRandom)
+		|| (g_iConfBombRandom	&& g_iSpawnBomb		>= g_iConfBombRandom)
+		|| (g_iConfFireRandom	&& g_iSpawnFire		>= g_iConfFireRandom)
+		|| (g_iConfGhostRandom	&& g_iSpawnGhost	>= g_iConfGhostRandom)
+		|| (g_iConfMindRandom	&& g_iSpawnMind		>= g_iConfMindRandom)
+		|| (g_iConfSmokeRandom	&& g_iSpawnSmoke	>= g_iConfSmokeRandom)
+		|| (g_iConfSpitRandom	&& g_iSpawnSpit		>= g_iConfSpitRandom && g_bLeft4Dead2)
+		|| (g_iConfTeslaRandom	&& g_iSpawnTesla	>= g_iConfTeslaRandom ))
 		{
 			if( g_iConfCheck )
 				CreateTimer(0.2, TimerSpawnCommon, EntIndexToEntRef(entity));
@@ -1468,7 +1458,7 @@ public void OnEntityDestroyed(int entity)
 // ====================================================================================================
 //					ONTAKEDAMAGE - FROM FIRE - COMMON INFECTED
 // ====================================================================================================
-public Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
@@ -1504,13 +1494,15 @@ public Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, floa
 	return Plugin_Continue;
 }
 
-public Action TimerCommonFireDamage(Handle timer, any victim)
+Action TimerCommonFireDamage(Handle timer, any victim)
 {
 	int common = EntRefToEntIndex(victim);
 	if( common != INVALID_ENT_REFERENCE )
 	{
 		MutantFireSetup(common, false);
 	}
+
+	return Plugin_Continue;
 }
 
 
@@ -1519,7 +1511,7 @@ public Action TimerCommonFireDamage(Handle timer, any victim)
 //					ONSPAWN - SPITTER ACID
 // ====================================================================================================
 // Create a trigger which Common Infected walk through, so they can mutate to Spit Infected
-public void OnSpawnSwarm(int entity)
+void OnSpawnSwarm(int entity)
 {
 	int trigger = CreateEntityByName("trigger_multiple");
 	DispatchKeyValue(trigger, "spawnflags", "1");
@@ -1544,7 +1536,7 @@ public void OnSpawnSwarm(int entity)
 }
 
 // A common walked through the trigger, mutate them!
-public void OnTouchSwarm(int entity, int common)
+void OnTouchSwarm(int entity, int common)
 {
 	if( common > MaxClients )
 	{
@@ -1564,10 +1556,12 @@ public void OnTouchSwarm(int entity, int common)
 //					ONSPAWN - COMMON INFECTED
 // ====================================================================================================
 // Determine which type of Zombie spawned.
-public Action TimerSpawnCommon(Handle timer, any entity)
+Action TimerSpawnCommon(Handle timer, any entity)
 {
 	if( IsValidEntRef(entity) )
 		SpawnCommon(EntRefToEntIndex(entity));
+
+	return Plugin_Continue;
 }
 
 void OnSpawnCommon(int common)
@@ -1729,7 +1723,7 @@ void MutantBombSetup(int common)
 	g_iInfectedBomb[index][3] = EntIndexToEntRef(entity);
 }
 
-public Action OnTakeDamageBomb(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+Action OnTakeDamageBomb(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	if( attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker) && GetClientTeam(attacker) == 2 )
 	{
@@ -1866,7 +1860,7 @@ void MutantFireSetup(int common, bool spawn)
 	}
 }
 
-public Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
@@ -1924,7 +1918,7 @@ void FireDrop(int common)
 }
 
 // A survivor walked through fire.
-public void OnTouchFire(int entity, int client)
+void OnTouchFire(int entity, int client)
 {
 	if( client > 0 && client <= MaxClients && IsClientInGame(client) && GetClientTeam(client) == 2 )
 	{
@@ -2042,7 +2036,7 @@ void MutantMindSetup(int common)
 	CreateCorrection(common, index, iType);
 }
 
-public void OnGamemodeMindOrder(const char[] output, int caller, int activator, float delay)
+void OnGamemodeMindOrder(const char[] output, int caller, int activator, float delay)
 {
 	if( g_iMindOrderGet == 2 )
 		g_iMindOrderGet = 1;
@@ -2130,7 +2124,7 @@ void CreateCorrection(int common, int index, int correction)
 	CreateTimer(0.5, TimerTeleport, index, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public Action TimerTeleport(Handle timer, any index)
+Action TimerTeleport(Handle timer, any index)
 {
 	int entity = g_iInfectedMind[index][0];
 
@@ -2231,7 +2225,7 @@ void MutantSmokeSetup(int common)
 	CreateTimer(1.0, TimerSmokeHurt, index, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public Action TimerSmokeHurt(Handle timer, any index)
+Action TimerSmokeHurt(Handle timer, any index)
 {
 	int entity = g_iInfectedSmoke[index][0];
 	if( !IsValidEntRef(entity) )
@@ -2283,7 +2277,7 @@ bool IsVisibleTo(float position[3], float targetposition[3])
 	return isVisible;
 }
 
-public bool _TraceFilter(int entity, int contentsMask)
+bool _TraceFilter(int entity, int contentsMask)
 {
 	if( !entity || entity <= MaxClients || !IsValidEntity(entity) ) // dont let WORLD, or invalid entities be hit
 		return false;
