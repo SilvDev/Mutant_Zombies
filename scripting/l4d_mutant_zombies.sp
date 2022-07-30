@@ -33,7 +33,7 @@
 	Change Log:
 
 1.15 (30-Jul-2022)
-	- Potential fix for rare server crashes caused by "CBaseEntityOutput::FireOutput". Thanks to "Haigen" for reporting.
+	- Potential fix for rare server crashes caused by "CBaseEntityOutput::FireOutput". Thanks to "Hawkins" for reporting.
 
 1.14 (07-Jun-2022)
 	- Fixed mutant zombies spawning when their "random" data config setting values were set to "0". Thanks to "Winn" for reporting.
