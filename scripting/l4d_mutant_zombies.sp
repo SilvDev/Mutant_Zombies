@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.14"
+#define PLUGIN_VERSION		"1.15"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.15 (30-Jul-2022)
+	- Potential fix for rare server crashes caused by "CBaseEntityOutput::FireOutput". Thanks to "Haigen" for reporting.
 
 1.14 (07-Jun-2022)
 	- Fixed mutant zombies spawning when their "random" data config setting values were set to "0". Thanks to "Winn" for reporting.
@@ -2429,17 +2432,6 @@ void TeslaShock(int common, int client)
 	AcceptEntityInput(entity, "AddOutput");
 	AcceptEntityInput(entity, "FireUser1");
 
-	SetVariantString("OnUser2 !self:Stop::0.50:-1");
-	AcceptEntityInput(entity, "AddOutput");
-	SetVariantString("OnUser2 !self:FireUser3::0.51:-1");
-	AcceptEntityInput(entity, "AddOutput");
-	AcceptEntityInput(entity, "FireUser2");
-
-	SetVariantString("OnUser3 !self:Start::0:-1");
-	AcceptEntityInput(entity, "AddOutput");
-	SetVariantString("OnUser3 !self:FireUser2::0:-1");
-	AcceptEntityInput(entity, "AddOutput");
-
 
 	// SOUND
 	iType = GetRandomInt(0, 7);
@@ -2597,49 +2589,131 @@ int CreateParticle(int client, int type)
 		}
 		case ENUM_PARTICLE_SMOKE:
 		{
-			// Refire
-			SetVariantString("OnUser1 !self:Stop::2.9:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser1 !self:FireUser2::3:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			AcceptEntityInput(entity, "FireUser1");
+			CreateTimer(2.9, TimerRefireSmoke, EntIndexToEntRef(entity));
 
-			SetVariantString("OnUser2 !self:Start::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser2 !self:FireUser1::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
+			// Refire
+			// SetVariantString("OnUser1 !self:Stop::2.9:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser1 !self:FireUser2::3:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// AcceptEntityInput(entity, "FireUser1");
+
+			// SetVariantString("OnUser2 !self:Start::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser2 !self:FireUser1::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
 		}
 		case ENUM_PARTICLE_SPIT2:
 		{
-			// Refire - 5 seconds
-			SetVariantString("OnUser1 !self:Stop::5:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser1 !self:FireUser2::6:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			AcceptEntityInput(entity, "FireUser1");
+			CreateTimer(5.0, TimerRefireSpit, EntIndexToEntRef(entity));
 
-			SetVariantString("OnUser2 !self:Start::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser2 !self:FireUser1::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
+			// Refire - 5 seconds
+			// SetVariantString("OnUser1 !self:Stop::5:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser1 !self:FireUser2::6:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// AcceptEntityInput(entity, "FireUser1");
+
+			// SetVariantString("OnUser2 !self:Start::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser2 !self:FireUser1::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
 		}
 		case ENUM_PARTICLE_TESLA:
 		{
-			// Refire
-			SetVariantString("OnUser1 !self:Stop::0.9:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser1 !self:FireUser2::1:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			AcceptEntityInput(entity, "FireUser1");
+			CreateTimer(0.9, TimerRefireTesla, EntIndexToEntRef(entity));
 
-			SetVariantString("OnUser2 !self:Start::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
-			SetVariantString("OnUser2 !self:FireUser1::0:-1");
-			AcceptEntityInput(entity, "AddOutput");
+			// Refire
+			// SetVariantString("OnUser1 !self:Stop::0.9:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser1 !self:FireUser2::1:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// AcceptEntityInput(entity, "FireUser1");
+
+			// SetVariantString("OnUser2 !self:Start::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
+			// SetVariantString("OnUser2 !self:FireUser1::0:-1");
+			// AcceptEntityInput(entity, "AddOutput");
 		}
 	}
 
 	return EntIndexToEntRef(entity);
+}
+
+Action TimerRefireTesla(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Stop");
+
+		CreateTimer(0.1, TimerRefireTesla2, entity);
+	}
+
+	return Plugin_Stop;
+}
+
+Action TimerRefireTesla2(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Start");
+
+		CreateTimer(0.9, TimerRefireTesla, entity);
+	}
+
+	return Plugin_Stop;
+}
+
+Action TimerRefireSmoke(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Stop");
+
+		CreateTimer(1.0, TimerRefireSmoke2, entity);
+		return Plugin_Continue;
+	}
+
+	return Plugin_Stop;
+}
+
+Action TimerRefireSmoke2(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Start");
+
+		CreateTimer(2.9, TimerRefireSmoke, entity);
+		return Plugin_Continue;
+	}
+
+	return Plugin_Stop;
+}
+
+Action TimerRefireSpit(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Stop");
+
+		CreateTimer(1.0, TimerRefireSpit2, entity);
+		return Plugin_Continue;
+	}
+
+	return Plugin_Stop;
+}
+
+Action TimerRefireSpit2(Handle timer, any entity)
+{
+	if( IsValidEntRef(entity) )
+	{
+		AcceptEntityInput(entity, "Start");
+
+		CreateTimer(5.0, TimerRefireSpit, entity);
+		return Plugin_Continue;
+	}
+
+	return Plugin_Stop;
 }
 
 
