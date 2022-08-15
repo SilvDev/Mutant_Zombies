@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.15"
+#define PLUGIN_VERSION		"1.16"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,11 @@
 
 ========================================================================================
 	Change Log:
+
+1.16 (15-Aug-2022)
+	- Changes to load the "l4d_mutants.cfg" data config based on the z_difficulty value if the file exists.
+	- Valid filenames are "l4d_mutants_easy.cfg", "l4d_mutants_normal.cfg", "l4d_mutants_hard.cfg" and "l4d_mutants_impossible.cfg".
+	- Requested by "Hawkins".
 
 1.15 (30-Jul-2022)
 	- Potential fix for rare server crashes caused by "CBaseEntityOutput::FireOutput". Thanks to "Hawkins" for reporting.
@@ -177,7 +182,7 @@ static const char g_sSoundsZap[8][25] =
 };
 
 
-ConVar g_hCvarAllow, g_hCvarMPGameMode, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog;
+ConVar g_hCvarAllow, g_hCvarDifficulty, g_hCvarMPGameMode, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog;
 int g_iSpitHurtCount[MAXPLAYERS+1];
 float g_fFireHurtCount[MAXPLAYERS+1];
 bool g_bLeft4Dead2;
@@ -294,6 +299,9 @@ public void OnPluginStart()
 	RegAdminCmd("sm_mutantspit",		CmdMutantSpit,		ADMFLAG_ROOT,	"Spawns a Mutant Spit Zombie.");
 	RegAdminCmd("sm_mutanttesla",		CmdMutantTesla,		ADMFLAG_ROOT,	"Spawns a Mutant Tesla Zombie.");
 	RegAdminCmd("sm_mutants",			CmdMutants,			ADMFLAG_ROOT,	"Spawns all Mutant Zombies.");
+
+	g_hCvarDifficulty = FindConVar("z_difficulty");
+	g_hCvarDifficulty.AddChangeHook(ConVarChanged_Diff);
 
 	g_hCvarMPGameMode = FindConVar("mp_gamemode");
 	g_hCvarMPGameMode.AddChangeHook(ConVarChanged_Allow);
@@ -418,6 +426,11 @@ void LateLoad()
 public void OnConfigsExecuted()
 {
 	IsAllowed();
+}
+
+void ConVarChanged_Diff(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	LoadDataConfig();
 }
 
 void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
@@ -754,10 +767,27 @@ void DeleteEntity(int type, int index)
 void LoadDataConfig()
 {
 	char sPath[PLATFORM_MAX_PATH];
+
+	// Load configs based on difficulty, if available
 	BuildPath(Path_SM, sPath, sizeof(sPath), CONFIG_DATA);
-	if( !FileExists(sPath) )
+
+	// Get difficulty
+	char sDiff[64];
+	g_hCvarDifficulty.GetString(sDiff, sizeof(sDiff));
+	StrToLowerCase(sDiff, sDiff, sizeof(sDiff));
+
+	// Format config "data/l4d_mutants_normal.cfg" for example
+	sPath[strlen(sPath) - 4] = 0;
+	Format(sPath, sizeof(sPath), "%s_%s.cfg", sPath, sDiff);
+
+	if( FileExists(sPath) == false )
 	{
-		SetFailState("Missing config '%s' please re-install.", CONFIG_DATA);
+		// Load default config
+		BuildPath(Path_SM, sPath, sizeof(sPath), CONFIG_DATA);
+		if( !FileExists(sPath) )
+		{
+			SetFailState("Missing config '%s' please re-install.", CONFIG_DATA);
+		}
 	}
 
 	KeyValues hFile = new KeyValues("Mutants");
@@ -2860,6 +2890,18 @@ bool IsCommonValidToUse(int entity)
 	}
 
 	return true;
+}
+
+void StrToLowerCase(const char[] input, char[] output, int maxlength)
+{
+	int pos;
+	while( input[pos] != 0 && pos < maxlength )
+	{
+		output[pos] = CharToLower(input[pos]);
+		pos++;
+	}
+
+	output[pos] = 0;
 }
 
 bool IsValidEntRef(int entity)
