@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.16"
+#define PLUGIN_VERSION		"1.17"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.17 (03-Dec-2022)
+	- Fixed invalid entity errors. Thanks to "Mi.Cura" for reporting.
 
 1.16 (15-Aug-2022)
 	- Changes to load the "l4d_mutants.cfg" data config based on the z_difficulty value if the file exists.
@@ -1599,7 +1602,8 @@ Action TimerSpawnCommon(Handle timer, any entity)
 
 void OnSpawnCommon(int common)
 {
-	SpawnCommon(common);
+	if( IsValidEntity(common) )
+		SpawnCommon(common);
 }
 
 void SpawnCommon(int common)
@@ -2040,6 +2044,8 @@ void MutantMindSetup(int common)
 				RemoveEdict(entity); // Because multiple plugins creating at once, avoid too many duplicate ents in the same frame
 		}
 	}
+
+	if( !IsValidEntity(common) ) return; // Because after here it's been throwing errors about invalid entity, even though it's been valid until now. Wtf game.
 
 	//  g_iMindOrderGet(1=Save, 0=Retrieve)  -OR-  if g_iMindOrderDone(total retrieved types) > g_iMindOrderCount(total saved types)
 	int iType;
@@ -2486,7 +2492,7 @@ void TeslaShock(int common, int client)
 int CreateEnvSprite(int client, const char[] sColor)
 {
 	int entity = CreateEntityByName("env_sprite");
-	if( entity == -1)
+	if( entity == -1 )
 	{
 		LogError("Failed to create 'env_sprite'");
 		return 0;
