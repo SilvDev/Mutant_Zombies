@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.17"
+#define PLUGIN_VERSION		"1.18"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.18 (12-Dec-2022)
+	- Fixed "Fire" type not spawning when walking through fire. Thanks to "BystanderZK" for reporting.
 
 1.17 (03-Dec-2022)
 	- Fixed invalid entity errors. Thanks to "Mi.Cura" for reporting.
@@ -1498,18 +1501,21 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 {
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
-		if( attacker > MaxClients && IsValidEntity(attacker) )
+		if( inflictor > MaxClients && IsValidEntity(inflictor) )
 		{
 			static char sTemp[20];
-			GetEdictClassname(attacker, sTemp, sizeof(sTemp));
+			GetEdictClassname(inflictor, sTemp, sizeof(sTemp));
 
 			if( strcmp(sTemp, "inferno") && strcmp(sTemp, "fire_cracker_blast") )
-				return Plugin_Handled;
+			{
+				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+				return Plugin_Continue;
+			}
 		}
 		else
 		{
 			SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-			return Plugin_Handled;
+			return Plugin_Continue;
 		}
 
 
@@ -1885,7 +1891,6 @@ void MutantFireSetup(int common, bool spawn)
 		SetEntPropEnt(common, Prop_Data, "m_hEffectEntity", entityflame);
 		SetEntPropEnt(common, Prop_Send, "m_hEffectEntity", entityflame);
 		ActivateEntity(entityflame);
-		AcceptEntityInput(entityflame, "Enable");
 
 		char sTemp[16];
 		Format(sTemp, sizeof(sTemp), "fire%d%d", entityflame, common);
