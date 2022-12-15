@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.18"
+#define PLUGIN_VERSION		"1.19"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.19 (15-Dec-2022)
+	- Fixed changing "attacker" to entity reference in OnTakeDamage which affects other plugins. Thanks to "Hawkins" for reporting.
 
 1.18 (12-Dec-2022)
 	- Fixed "Fire" type not spawning when walking through fire. Thanks to "BystanderZK" for reporting.
@@ -996,12 +999,12 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 {
 	if( damagetype == 128 && attacker > MaxClients && GetClientTeam(victim) == 2 )
 	{
-		attacker = EntIndexToEntRef(attacker);
+		int entref = EntIndexToEntRef(attacker);
 
 		for( int i = 0; i < MAX_ENTS; i++ )
 		{
 			// Bomb
-			if( g_iInfectedBomb[i][0] == attacker )
+			if( g_iInfectedBomb[i][0] == entref )
 			{
 				if( GetRandomInt(1, 100) <= g_iConfBombExplodeA )
 					BombDetonate(i);
@@ -1011,10 +1014,10 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 			}
 
 			// Fire
-			if( g_iInfectedFire[i][0] == attacker )
+			if( g_iInfectedFire[i][0] == entref )
 			{
 				if( GetRandomInt(1, 100) <= g_iConfFireDrop1 )
-					FireDrop(attacker);
+					FireDrop(entref);
 
 				damagetype = 8;
 				if( g_fConfFireDamage )
@@ -1023,28 +1026,28 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 			}
 
 			// Ghost
-			if( g_fConfGhostDamage && g_iInfectedGhost[i] == attacker )
+			if( g_fConfGhostDamage && g_iInfectedGhost[i] == entref )
 			{
 				damage = g_fConfGhostDamage;
 				return Plugin_Changed;
 			}
 
 			// Mind
-			if( g_fConfMindDamage && g_iInfectedMind[i][0] == attacker )
+			if( g_fConfMindDamage && g_iInfectedMind[i][0] == entref )
 			{
 				damage = g_fConfMindDamage;
 				return Plugin_Changed;
 			}
 
 			// Smoke
-			if( g_fConfSmokeDamage && g_iInfectedSmoke[i][0] == attacker )
+			if( g_fConfSmokeDamage && g_iInfectedSmoke[i][0] == entref )
 			{
 				damage = g_fConfSmokeDamage;
 				return Plugin_Changed;
 			}
 
 			// Spit
-			if( g_bLeft4Dead2 && g_iInfectedSpit[i][0] == attacker )
+			if( g_bLeft4Dead2 && g_iInfectedSpit[i][0] == entref )
 			{
 				HurtClient(victim, TYPE_SPIT);
 				if( g_iConfSpitHurt && g_iSpitHurtCount[victim] == 0 )
@@ -1058,9 +1061,9 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 			}
 
 			// Tesla
-			if( g_iInfectedTesla[i][0] == attacker )
+			if( g_iInfectedTesla[i][0] == entref )
 			{
-				TeslaShock(attacker, victim);
+				TeslaShock(entref, victim);
 
 				if( g_fConfTeslaDamage )
 					damage = g_fConfTeslaDamage;
