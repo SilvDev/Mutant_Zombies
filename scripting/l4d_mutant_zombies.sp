@@ -1,6 +1,6 @@
 /*
 *	Mutant Zombies
-*	Copyright (C) 2022 Silvers
+*	Copyright (C) 2023 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.19"
+#define PLUGIN_VERSION		"1.20"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,10 @@
 
 ========================================================================================
 	Change Log:
+
+1.20 (20-Jan-2023)
+	- L4D2: Added "incendiary" data config setting to Fire Mutants, allowing common infected to convert to Fire Mutants when shot with Incendiary ammo.
+	- Fixed common infected walking through fire not having the charred model effect.
 
 1.19 (15-Dec-2022)
 	- Fixed changing "attacker" to entity reference in OnTakeDamage which affects other plugins. Thanks to "Hawkins" for reporting.
@@ -217,7 +221,7 @@ int g_iConfCheck, g_iConfLimit, g_iConfRandom, g_iConfTypes, g_iConfUncommon;
 int g_iConfBombExplodeA, g_iConfBombExplodeD, g_iConfBombExplodeH, g_iConfBombGlow, g_iConfBombGlowCol, g_iConfBombHealth, g_iConfBombLimit, g_iConfBombRandom, g_iConfBombShake;
 float g_fConfBombDamage, g_fConfBombDamageD, g_fConfBombDistance;
 // Fire config variables
-int g_iConfFireDrop1, g_iConfFireDrop2, g_iConfFireGlow, g_iConfFireGlowCol, g_iConfFireHealth, g_iConfFireLimit, g_iConfFireRandom, g_iConfFireWalk;
+int g_iConfFireDrop1, g_iConfFireDrop2, g_iConfFireGlow, g_iConfFireGlowCol, g_iConfFireHealth, g_iConfFireLimit, g_iConfFireRandom, g_iConfFireWalk, g_iConfFireIncen;
 float g_fConfFireDamage, g_fConfFireTime;
 // Ghost config variables
 int g_iConfGhostGlow, g_iConfGhostGlowCol, g_iConfGhostHealth, g_iConfGhostLimit, g_iConfGhostOpacity, g_iConfGhostRandom;
@@ -852,6 +856,8 @@ void LoadDataConfig()
 		g_iConfFireRandom =		hFile.GetNum("random",				0);
 		g_fConfFireTime =		hFile.GetFloat("time",				0.0);
 		g_iConfFireWalk =		hFile.GetNum("walk",				0);
+		if( g_bLeft4Dead2 )
+			g_iConfFireIncen =	hFile.GetNum("incendiary",			0);
 		hFile.Rewind();
 	}
 
@@ -1081,7 +1087,7 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 //					HURT PLAYERS
 // ====================================================================================================
 // Spit infected hurt, repeat hurt
-Action TimerHurt(Handle timer, any userid)
+Action TimerHurt(Handle timer, int userid)
 {
 	int client = GetClientOfUserId(userid);
 	if( client && IsClientInGame(client) && IsPlayerAlive(client) )
@@ -1437,13 +1443,13 @@ public void OnEntityCreated(int entity, const char[] classname)
 			}
 
 			// "inferno" or "fire_cracker_blast" is active. We hook commons taking damage to detect if they walk in fire so they can mutate.
-			if( g_iCheckInferno > 0 && IsCommonValidToUse(entity) )
+			if( (g_iCheckInferno > 0 || g_iConfFireIncen > 0) && IsCommonValidToUse(entity) )
 				SDKHook(entity, SDKHook_OnTakeDamage, OnCommonFireDamage);
 		}
 	}
 
 	// Detect "fire_cracker_blast" to create the "trigger_multiple" so common can walk in fire (molotovs or firework crates) and mutate.
-	else if( g_iConfFireWalk && (strcmp(classname, "inferno") == 0 || strcmp(classname, "fire_cracker_blast") == 0) )
+	else if( g_iConfFireWalk && !g_iConfFireIncen && (strcmp(classname, "inferno") == 0 || strcmp(classname, "fire_cracker_blast") == 0) )
 	{
 		// Commons are not hooked.
 		if( g_iCheckInferno == 0 )
@@ -1482,6 +1488,7 @@ public void OnEntityDestroyed(int entity)
 		if( strcmp(classname, "inferno") == 0 || strcmp(classname, "fire_cracker_blast") == 0 )
 		{
 			g_iCheckInferno--;
+			if( g_iCheckInferno < 0 ) g_iCheckInferno = 0;
 
 			// No more "inferno" or "fire_cracker_blast". Unhook commons.
 			if( g_iCheckInferno == 0 )
@@ -1502,9 +1509,18 @@ public void OnEntityDestroyed(int entity)
 // ====================================================================================================
 Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
-	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
+	if( damagetype == 10 && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
 	{
-		if( inflictor > MaxClients && IsValidEntity(inflictor) )
+		SetEntProp(victim, Prop_Data, "m_lifeState", 1);
+		CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
+		SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+
+		return Plugin_Handled;
+	}
+
+	else if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 ) // Fire damage
+	{
+		if( g_iConfFireWalk && inflictor > MaxClients && IsValidEntity(inflictor) )
 		{
 			static char sTemp[20];
 			GetEdictClassname(inflictor, sTemp, sizeof(sTemp));
@@ -1527,7 +1543,6 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 		{
 			if( GetRandomInt(1, 100) <= g_iConfFireWalk )
 			{
-				damage = 0.0;
 				SetEntProp(victim, Prop_Data, "m_lifeState", 1);
 				CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
 				return Plugin_Handled;
@@ -1539,7 +1554,7 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 	return Plugin_Continue;
 }
 
-Action TimerCommonFireDamage(Handle timer, any victim)
+Action TimerCommonFireDamage(Handle timer, int victim)
 {
 	int common = EntRefToEntIndex(victim);
 	if( common != INVALID_ENT_REFERENCE )
@@ -1601,7 +1616,7 @@ void OnTouchSwarm(int entity, int common)
 //					ONSPAWN - COMMON INFECTED
 // ====================================================================================================
 // Determine which type of Zombie spawned.
-Action TimerSpawnCommon(Handle timer, any entity)
+Action TimerSpawnCommon(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 		SpawnCommon(EntRefToEntIndex(entity));
@@ -1881,6 +1896,11 @@ void MutantFireSetup(int common, bool spawn)
 	}
 	else
 	{
+		ExtinguishEntity(common);
+		DispatchSpawn(common); // This allows them to ignite with charred effect and no more hackish workarounds!
+		IgniteEntity(common, 6000.0);
+
+		/* OLD METHOD:
 		// Infected which walk through fire die when IgniteEntity() is used.
 		// This is long winded and stupid, the model does not change appearance but it works.
 		int entityflame = CreateEntityByName("entityflame");
@@ -1902,6 +1922,7 @@ void MutantFireSetup(int common, bool spawn)
 		AcceptEntityInput(entityflame, "IgniteEntity", common, common, 600);
 		SetVariantString(sTemp);
 		AcceptEntityInput(entityflame, "Ignite", common, common, 600);
+		// */
 	}
 }
 
@@ -1915,6 +1936,7 @@ Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage
 
 	if( g_iConfFireDrop2 && GetRandomInt(1, 100) <= g_iConfFireDrop2 && attacker > 0 && attacker <= MaxClients)
 		FireDrop(victim);
+
 	return Plugin_Continue;
 }
 
@@ -2171,7 +2193,7 @@ void CreateCorrection(int common, int index, int correction)
 	CreateTimer(0.5, TimerTeleport, index, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
-Action TimerTeleport(Handle timer, any index)
+Action TimerTeleport(Handle timer, int index)
 {
 	int entity = g_iInfectedMind[index][0];
 
@@ -2272,7 +2294,7 @@ void MutantSmokeSetup(int common)
 	CreateTimer(1.0, TimerSmokeHurt, index, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
-Action TimerSmokeHurt(Handle timer, any index)
+Action TimerSmokeHurt(Handle timer, int index)
 {
 	int entity = g_iInfectedSmoke[index][0];
 	if( !IsValidEntRef(entity) )
@@ -2684,7 +2706,7 @@ int CreateParticle(int client, int type)
 	return EntIndexToEntRef(entity);
 }
 
-Action TimerRefireTesla(Handle timer, any entity)
+Action TimerRefireTesla(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
@@ -2696,7 +2718,7 @@ Action TimerRefireTesla(Handle timer, any entity)
 	return Plugin_Stop;
 }
 
-Action TimerRefireTesla2(Handle timer, any entity)
+Action TimerRefireTesla2(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
@@ -2708,7 +2730,7 @@ Action TimerRefireTesla2(Handle timer, any entity)
 	return Plugin_Stop;
 }
 
-Action TimerRefireSmoke(Handle timer, any entity)
+Action TimerRefireSmoke(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
@@ -2721,7 +2743,7 @@ Action TimerRefireSmoke(Handle timer, any entity)
 	return Plugin_Stop;
 }
 
-Action TimerRefireSmoke2(Handle timer, any entity)
+Action TimerRefireSmoke2(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
@@ -2734,7 +2756,7 @@ Action TimerRefireSmoke2(Handle timer, any entity)
 	return Plugin_Stop;
 }
 
-Action TimerRefireSpit(Handle timer, any entity)
+Action TimerRefireSpit(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
@@ -2747,7 +2769,7 @@ Action TimerRefireSpit(Handle timer, any entity)
 	return Plugin_Stop;
 }
 
-Action TimerRefireSpit2(Handle timer, any entity)
+Action TimerRefireSpit2(Handle timer, int entity)
 {
 	if( IsValidEntRef(entity) )
 	{
