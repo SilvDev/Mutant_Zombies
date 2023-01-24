@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.20"
+#define PLUGIN_VERSION		"1.21"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,12 @@
 
 ========================================================================================
 	Change Log:
+
+1.21 (24-Jan-2023)
+	- Fixed incendiary bullets not always converting common infected to Fire Mutants.
+	- Fixed not setting the config health value on Fire Mutants in some circumstances.
+	- Fixed various fire damage causing Fire Mutants to die prematurely.
+	- Thanks to "BystanderZK" for reporting and testing.
 
 1.20 (20-Jan-2023)
 	- L4D2: Added "incendiary" data config setting to Fire Mutants, allowing common infected to convert to Fire Mutants when shot with Incendiary ammo.
@@ -206,6 +212,7 @@ int g_iInfectedMind[MAX_ENTS][5];
 int g_iInfectedSmoke[MAX_ENTS][3];
 int g_iInfectedSpit[MAX_ENTS][3]; // [0] = Common infected, [1] = ParticleA, [2] = ParticleB
 int g_iInfectedTesla[MAX_ENTS][2];
+int g_iFireHealth[2048];
 
 // Global variables
 int g_iCheckInferno, g_iLoadStatus, g_iPlayerSpawn, g_iRoundStart;
@@ -290,7 +297,11 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		strcopy(error, err_max, "Plugin only supports Left 4 Dead 1 & 2.");
 		return APLRes_SilentFailure;
 	}
+
 	g_bLateLoad = late;
+
+	RegPluginLibrary("l4d_mutants");
+
 	return APLRes_Success;
 }
 
@@ -1491,7 +1502,7 @@ public void OnEntityDestroyed(int entity)
 			if( g_iCheckInferno < 0 ) g_iCheckInferno = 0;
 
 			// No more "inferno" or "fire_cracker_blast". Unhook commons.
-			if( g_iCheckInferno == 0 )
+			if( g_iCheckInferno == 0 && !g_iConfFireIncen )
 			{
 				int common = -1;
 				while( (common = FindEntityByClassname(common, "infected")) != INVALID_ENT_REFERENCE )
@@ -1509,7 +1520,7 @@ public void OnEntityDestroyed(int entity)
 // ====================================================================================================
 Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
-	if( damagetype == 10 && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
+	if( damagetype & (DMG_BULLET|DMG_BURN) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
 	{
 		SetEntProp(victim, Prop_Data, "m_lifeState", 1);
 		CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
@@ -1518,7 +1529,7 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 		return Plugin_Handled;
 	}
 
-	else if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 ) // Fire damage
+	else if( damagetype == DMG_BURN || damagetype == (DMG_BURN|DMG_PREVENT_PHYSICS_FORCE) || damagetype == (DMG_BURN|DMG_DIRECT) ) // Fire damage
 	{
 		if( g_iConfFireWalk && inflictor > MaxClients && IsValidEntity(inflictor) )
 		{
@@ -1886,9 +1897,6 @@ void MutantFireSetup(int common, bool spawn)
 		AcceptEntityInput(common, "StartGlowing");
 	}
 
-	if( g_iConfFireHealth )
-		SetEntProp(common, Prop_Data, "m_iHealth", g_iConfFireHealth);
-
 	if( spawn )
 	{
 		// On infected which just spawn we simply ignite. So nice, so simple, the model appears burnt as expected.
@@ -1924,18 +1932,40 @@ void MutantFireSetup(int common, bool spawn)
 		AcceptEntityInput(entityflame, "Ignite", common, common, 600);
 		// */
 	}
+
+	if( g_iConfFireHealth )
+	{
+		SetEntProp(common, Prop_Data, "m_iHealth", g_iConfFireHealth);
+		g_iFireHealth[common] = g_iConfFireHealth;
+	}
+	else
+	{
+		g_iFireHealth[common] = GetEntProp(common, Prop_Data, "m_iHealth");
+	}
 }
 
 Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
-		damage = 0.0;
+		return Plugin_Handled;
+	}
+
+	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
+	if( health < 0 && g_iFireHealth[victim] - damage > 0 )
+	{
+		ExtinguishEntity(victim);
+		DispatchSpawn(victim); // Fix common randomly being killed, have to dispatch again to keep charred effect
+		IgniteEntity(victim, 6000.0);
+
+		SetEntProp(victim, Prop_Data, "m_iHealth", g_iFireHealth[victim] - RoundFloat(damage));
 		return Plugin_Handled;
 	}
 
 	if( g_iConfFireDrop2 && GetRandomInt(1, 100) <= g_iConfFireDrop2 && attacker > 0 && attacker <= MaxClients)
 		FireDrop(victim);
+
+	g_iFireHealth[victim] = GetEntProp(victim, Prop_Data, "m_iHealth") - RoundFloat(damage);
 
 	return Plugin_Continue;
 }
