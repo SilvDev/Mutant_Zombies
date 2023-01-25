@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.21"
+#define PLUGIN_VERSION		"1.22"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,11 @@
 
 ========================================================================================
 	Change Log:
+
+1.22 (25-Jan-2023)
+	- Added "drop_damage" data config setting to Fire Mutants, allowing dropped fire damage to be controlled independently from the "damage" key.
+	- Fixed converting common infected into Fire Mutants when shot by normal bullets.
+	- Fixed incendiary bullets not always converting common infected to Fire Mutants.
 
 1.21 (24-Jan-2023)
 	- Fixed incendiary bullets not always converting common infected to Fire Mutants.
@@ -229,7 +234,7 @@ int g_iConfBombExplodeA, g_iConfBombExplodeD, g_iConfBombExplodeH, g_iConfBombGl
 float g_fConfBombDamage, g_fConfBombDamageD, g_fConfBombDistance;
 // Fire config variables
 int g_iConfFireDrop1, g_iConfFireDrop2, g_iConfFireGlow, g_iConfFireGlowCol, g_iConfFireHealth, g_iConfFireLimit, g_iConfFireRandom, g_iConfFireWalk, g_iConfFireIncen;
-float g_fConfFireDamage, g_fConfFireTime;
+float g_fConfFireDamage, g_fConfFireTime, g_fConfFireDrop3;
 // Ghost config variables
 int g_iConfGhostGlow, g_iConfGhostGlowCol, g_iConfGhostHealth, g_iConfGhostLimit, g_iConfGhostOpacity, g_iConfGhostRandom;
 float g_fConfGhostDamage;
@@ -256,7 +261,8 @@ enum
 	TYPE_MIND	= (1 << 3),
 	TYPE_SMOKE	= (1 << 4),
 	TYPE_SPIT	= (1 << 5),
-	TYPE_TESLA	= (1 << 6)
+	TYPE_TESLA	= (1 << 6),
+	TYPE_DROP	= (1 << 7)
 }
 
 enum
@@ -858,6 +864,7 @@ void LoadDataConfig()
 		g_fConfFireDamage =		hFile.GetFloat("damage",			0.0);
 		g_iConfFireDrop1 =		hFile.GetNum("drop_attack",			0);
 		g_iConfFireDrop2 =		hFile.GetNum("drop_defend",			0);
+		g_fConfFireDrop3 =		hFile.GetFloat("drop_damage",		0.0);
 		g_iConfFireGlow =		hFile.GetNum("glow",				0);
 		hFile.GetString("glow_color", sTemp, sizeof(sTemp),			"");
 		g_iConfFireGlowCol =	GetColor(sTemp);
@@ -1014,7 +1021,7 @@ public void OnClientPutInServer(int client)
 
 Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
-	if( damagetype == 128 && attacker > MaxClients && GetClientTeam(victim) == 2 )
+	if( damagetype == DMG_CLUB && attacker > MaxClients && GetClientTeam(victim) == 2 )
 	{
 		int entref = EntIndexToEntRef(attacker);
 
@@ -1036,7 +1043,7 @@ Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, in
 				if( GetRandomInt(1, 100) <= g_iConfFireDrop1 )
 					FireDrop(entref);
 
-				damagetype = 8;
+				damagetype = DMG_BURN;
 				if( g_fConfFireDamage )
 					damage = g_fConfFireDamage;
 				return Plugin_Changed;
@@ -1130,6 +1137,7 @@ void HurtClient(int client, int type = 0)
 {
 	switch( type )
 	{
+		case TYPE_DROP:		SDKHooks_TakeDamage(client, 0, 0, g_fConfFireDrop3,		DMG_BURN);
 		case TYPE_FIRE:		SDKHooks_TakeDamage(client, 0, 0, g_fConfFireDamage,	DMG_BURN);
 		case TYPE_SPIT:		SDKHooks_TakeDamage(client, 0, 0, g_fConfSpitDamage,	DMG_GENERIC);
 		case TYPE_SMOKE:	SDKHooks_TakeDamage(client, 0, 0, g_fConfSmokeDamage2,	DMG_NERVEGAS);
@@ -1520,7 +1528,8 @@ public void OnEntityDestroyed(int entity)
 // ====================================================================================================
 Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
-	if( damagetype & (DMG_BULLET|DMG_BURN) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
+	// DMG_BULLET|DMG_BURN
+	if( (damagetype == 10 || damagetype == -2147483638) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
 	{
 		SetEntProp(victim, Prop_Data, "m_lifeState", 1);
 		CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
@@ -1529,7 +1538,8 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 		return Plugin_Handled;
 	}
 
-	else if( damagetype == DMG_BURN || damagetype == (DMG_BURN|DMG_PREVENT_PHYSICS_FORCE) || damagetype == (DMG_BURN|DMG_DIRECT) ) // Fire damage
+	// DMG_BURN / (DMG_BURN|DMG_PREVENT_PHYSICS_FORCE) / (DMG_BURN|DMG_DIRECT)
+	else if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 ) // Fire damage
 	{
 		if( g_iConfFireWalk && inflictor > MaxClients && IsValidEntity(inflictor) )
 		{
@@ -1547,7 +1557,6 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 			SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
 			return Plugin_Continue;
 		}
-
 
 		// Validate model.
 		if( IsCommonValidToUse(victim) )
@@ -1962,7 +1971,7 @@ Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage
 		return Plugin_Handled;
 	}
 
-	if( g_iConfFireDrop2 && GetRandomInt(1, 100) <= g_iConfFireDrop2 && attacker > 0 && attacker <= MaxClients)
+	if( g_iConfFireDrop2 && attacker > 0 && attacker <= MaxClients && GetRandomInt(1, 100) <= g_iConfFireDrop2 )
 		FireDrop(victim);
 
 	g_iFireHealth[victim] = GetEntProp(victim, Prop_Data, "m_iHealth") - RoundFloat(damage);
@@ -2024,7 +2033,7 @@ void OnTouchFire(int entity, int client)
 		if( time - g_fFireHurtCount[client] >= 1.0 )
 		{
 			g_fFireHurtCount[client] = time;
-			HurtClient(client, TYPE_FIRE);
+			HurtClient(client, TYPE_DROP);
 		}
 	}
 }
