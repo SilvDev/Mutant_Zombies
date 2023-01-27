@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.22"
+#define PLUGIN_VERSION		"1.23"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.23 (27-Jan-2023)
+	- Fixed invisible Fire Mutants bug from the last 3 plugin updates. Thanks to "Mi.Cura" for reporting.
 
 1.22 (25-Jan-2023)
 	- Added "drop_damage" data config setting to Fire Mutants, allowing dropped fire damage to be controlled independently from the "damage" key.
@@ -666,7 +669,6 @@ void DeleteEntity(int type, int index)
 			g_iInfectedFire[index][0] = 0;
 			g_iInfectedFire[index][1] = 0;
 			g_iInfectedFire[index][2] = 0;
-			return;
 		}
 
 		case TYPE_GHOST:
@@ -679,7 +681,6 @@ void DeleteEntity(int type, int index)
 				SetOpacity(entity, 255);
 
 			g_iInfectedGhost[index] = 0;
-			return;
 		}
 
 		case TYPE_MIND:
@@ -723,7 +724,6 @@ void DeleteEntity(int type, int index)
 			g_iInfectedMind[index][2] = 0;
 			g_iInfectedMind[index][3] = 0;
 			g_iInfectedMind[index][4] = 0;
-			return;
 		}
 
 		case TYPE_SMOKE:
@@ -751,7 +751,6 @@ void DeleteEntity(int type, int index)
 			g_iInfectedSmoke[index][0] = 0;
 			g_iInfectedSmoke[index][1] = 0;
 			g_iInfectedSmoke[index][2] = 0;
-			return;
 		}
 
 		case TYPE_SPIT:
@@ -770,7 +769,6 @@ void DeleteEntity(int type, int index)
 			g_iInfectedSpit[index][0] = 0;
 			g_iInfectedSpit[index][1] = 0;
 			g_iInfectedSpit[index][2] = 0;
-			return;
 		}
 
 		case TYPE_TESLA:
@@ -784,7 +782,6 @@ void DeleteEntity(int type, int index)
 
 			g_iInfectedTesla[index][0] = 0;
 			g_iInfectedTesla[index][1] = 0;
-			return;
 		}
 	}
 }
@@ -1463,7 +1460,9 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 			// "inferno" or "fire_cracker_blast" is active. We hook commons taking damage to detect if they walk in fire so they can mutate.
 			if( (g_iCheckInferno > 0 || g_iConfFireIncen > 0) && IsCommonValidToUse(entity) )
+			{
 				SDKHook(entity, SDKHook_OnTakeDamage, OnCommonFireDamage);
+			}
 		}
 	}
 
@@ -1913,9 +1912,13 @@ void MutantFireSetup(int common, bool spawn)
 	}
 	else
 	{
-		ExtinguishEntity(common);
-		DispatchSpawn(common); // This allows them to ignite with charred effect and no more hackish workarounds!
-		IgniteEntity(common, 6000.0);
+		// Infected is broken and would render invisible, so don't fix them from death
+		if( GetEntProp(common, Prop_Send, "m_bClientSideRagdoll") == 0 )
+		{
+			ExtinguishEntity(common);
+			DispatchSpawn(common); // Fix common randomly being killed, have to dispatch again to keep charred effect
+			IgniteEntity(common, 6000.0);
+		}
 
 		/* OLD METHOD:
 		// Infected which walk through fire die when IgniteEntity() is used.
