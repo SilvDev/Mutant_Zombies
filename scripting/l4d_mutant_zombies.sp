@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.23"
+#define PLUGIN_VERSION		"1.24"
 
 /*======================================================================================
 	Plugin Info:
@@ -32,8 +32,12 @@
 ========================================================================================
 	Change Log:
 
+1.24 (02-Feb-2023)
+	- Fixed Fire Mutants not attacking when initially ignited.
+	- Fixed invincible Fire Mutants bug from the last 3 plugin updates. Thanks to "Mi.Cura" for reporting.
+
 1.23 (27-Jan-2023)
-	- Fixed invisible Fire Mutants bug from the last 3 plugin updates. Thanks to "Mi.Cura" for reporting.
+	- Fixed invisible Fire Mutants bug from the last 2 plugin updates. Thanks to "Mi.Cura" for reporting.
 
 1.22 (25-Jan-2023)
 	- Added "drop_damage" data config setting to Fire Mutants, allowing dropped fire damage to be controlled independently from the "damage" key.
@@ -1531,6 +1535,10 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 	if( (damagetype == 10 || damagetype == -2147483638) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
 	{
 		SetEntProp(victim, Prop_Data, "m_lifeState", 1);
+
+		// Fix invincible common, for whatever reason this sometimes doesn't reset
+		CreateTimer(0.5, TimerState, EntIndexToEntRef(victim));
+
 		CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
 		SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
 
@@ -1563,7 +1571,12 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 			if( GetRandomInt(1, 100) <= g_iConfFireWalk )
 			{
 				SetEntProp(victim, Prop_Data, "m_lifeState", 1);
+
+				// Fix invincible common, for whatever reason this sometimes doesn't reset
+				CreateTimer(0.5, TimerState, EntIndexToEntRef(victim));
+
 				CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
+				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
 				return Plugin_Handled;
 			}
 		}
@@ -1889,6 +1902,9 @@ void MutantFireSetup(int common, bool spawn)
 	g_bHookCommonFire = false;
 	SetEntProp(common, Prop_Data, "m_lifeState", 0);
 
+	// Fix invincible common, for whatever reason this sometimes doesn't reset
+	CreateTimer(0.2, TimerState, EntIndexToEntRef(common));
+
 	int index = GetEntityIndex(TYPE_FIRE);
 	if( index == -1 ) return;
 
@@ -1915,9 +1931,7 @@ void MutantFireSetup(int common, bool spawn)
 		// Infected is broken and would render invisible, so don't fix them from death
 		if( GetEntProp(common, Prop_Send, "m_bClientSideRagdoll") == 0 )
 		{
-			ExtinguishEntity(common);
-			DispatchSpawn(common); // Fix common randomly being killed, have to dispatch again to keep charred effect
-			IgniteEntity(common, 6000.0);
+			ReigniteCommon(common);
 		}
 
 		/* OLD METHOD:
@@ -1956,8 +1970,48 @@ void MutantFireSetup(int common, bool spawn)
 	}
 }
 
+void ReigniteCommon(int common)
+{
+	ExtinguishEntity(common);
+	DispatchSpawn(common); // Fix common randomly being killed, have to dispatch again to keep charred effect
+	IgniteEntity(common, 6000.0);
+
+	// Fix common standing still and not attacking
+	CreateTimer(0.1, TimerTarget, EntIndexToEntRef(common));
+}
+
+Action TimerState(Handle timer, int common)
+{
+	common = EntRefToEntIndex(common);
+	if( common != INVALID_ENT_REFERENCE )
+	{
+		SetEntProp(common, Prop_Data, "m_lifeState", 0);
+	}
+
+	return Plugin_Continue;
+}
+
+Action TimerTarget(Handle timer, int common)
+{
+	common = EntRefToEntIndex(common);
+	if( common != INVALID_ENT_REFERENCE )
+	{
+		for( int i = 1; i <= MaxClients; i++ )
+		{
+			if( IsClientInGame(i) && GetClientTeam(i) == 2 && IsPlayerAlive(i) )
+			{
+				SDKHooks_TakeDamage(common, i, i, 0.0);
+				break;
+			}
+		}
+	}
+
+	return Plugin_Continue;
+}
+
 Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
+	// DMG_BURN or (DMG_BURN | DMG_PREVENT_PHYSICS_FORCE) or (DMG_BURN | DMG_DIRECT)
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
 		return Plugin_Handled;
@@ -1966,9 +2020,7 @@ Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage
 	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
 	if( health < 0 && g_iFireHealth[victim] - damage > 0 )
 	{
-		ExtinguishEntity(victim);
-		DispatchSpawn(victim); // Fix common randomly being killed, have to dispatch again to keep charred effect
-		IgniteEntity(victim, 6000.0);
+		ReigniteCommon(victim);
 
 		SetEntProp(victim, Prop_Data, "m_iHealth", g_iFireHealth[victim] - RoundFloat(damage));
 		return Plugin_Handled;
