@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.24"
+#define PLUGIN_VERSION		"1.25"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.25 (03-Feb-2023)
+	- Changed the method of converting and preventing Fire Mutants from dying. Should fix invincible common. Thanks to "sonic555" for reporting.
 
 1.24 (02-Feb-2023)
 	- Fixed Fire Mutants not attacking when initially ignited.
@@ -1534,12 +1537,8 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 	// DMG_BULLET|DMG_BURN
 	if( (damagetype == 10 || damagetype == -2147483638) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
 	{
-		SetEntProp(victim, Prop_Data, "m_lifeState", 1);
+		MutantFireSetup(victim, false);
 
-		// Fix invincible common, for whatever reason this sometimes doesn't reset
-		CreateTimer(0.5, TimerState, EntIndexToEntRef(victim));
-
-		CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
 		SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
 
 		return Plugin_Handled;
@@ -1570,30 +1569,16 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 		{
 			if( GetRandomInt(1, 100) <= g_iConfFireWalk )
 			{
-				SetEntProp(victim, Prop_Data, "m_lifeState", 1);
+				MutantFireSetup(victim, false);
 
-				// Fix invincible common, for whatever reason this sometimes doesn't reset
-				CreateTimer(0.5, TimerState, EntIndexToEntRef(victim));
-
-				CreateTimer(0.1, TimerCommonFireDamage, EntIndexToEntRef(victim));
 				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+
 				return Plugin_Handled;
 			}
 		}
 	}
 
 	SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-	return Plugin_Continue;
-}
-
-Action TimerCommonFireDamage(Handle timer, int victim)
-{
-	int common = EntRefToEntIndex(victim);
-	if( common != INVALID_ENT_REFERENCE )
-	{
-		MutantFireSetup(common, false);
-	}
-
 	return Plugin_Continue;
 }
 
@@ -1900,10 +1885,6 @@ void BombDetonate(int index)
 void MutantFireSetup(int common, bool spawn)
 {
 	g_bHookCommonFire = false;
-	SetEntProp(common, Prop_Data, "m_lifeState", 0);
-
-	// Fix invincible common, for whatever reason this sometimes doesn't reset
-	CreateTimer(0.2, TimerState, EntIndexToEntRef(common));
 
 	int index = GetEntityIndex(TYPE_FIRE);
 	if( index == -1 ) return;
@@ -1978,17 +1959,6 @@ void ReigniteCommon(int common)
 
 	// Fix common standing still and not attacking
 	CreateTimer(0.1, TimerTarget, EntIndexToEntRef(common));
-}
-
-Action TimerState(Handle timer, int common)
-{
-	common = EntRefToEntIndex(common);
-	if( common != INVALID_ENT_REFERENCE )
-	{
-		SetEntProp(common, Prop_Data, "m_lifeState", 0);
-	}
-
-	return Plugin_Continue;
 }
 
 Action TimerTarget(Handle timer, int common)
