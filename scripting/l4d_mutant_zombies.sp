@@ -33,7 +33,8 @@
 	Change Log:
 
 1.25 (03-Feb-2023)
-	- Changed the method of converting and preventing Fire Mutants from dying. Should fix invincible common. Thanks to "sonic555" for reporting.
+	- Changed the method of converting and preventing Fire Mutants from dying. Thanks to "sonic555" for reporting.
+	- Added another check to prevent invisible common remaining alive.
 
 1.24 (02-Feb-2023)
 	- Fixed Fire Mutants not attacking when initially ignited.
@@ -1981,12 +1982,20 @@ Action TimerTarget(Handle timer, int common)
 
 Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
+	// Infected is broken and would render invisible, so don't fix them from death
+	if( GetEntProp(victim, Prop_Send, "m_bClientSideRagdoll") != 0 )
+	{
+		SDKUnhook(victim, SDKHook_OnTakeDamage, OnTakeDamageFire);
+		return Plugin_Continue;
+	}
+
 	// DMG_BURN or (DMG_BURN | DMG_PREVENT_PHYSICS_FORCE) or (DMG_BURN | DMG_DIRECT)
 	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
 		return Plugin_Handled;
 	}
 
+	// Fix health bug where the game tries to kill common with a huge amount of damage
 	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
 	if( health < 0 && g_iFireHealth[victim] - damage > 0 )
 	{
