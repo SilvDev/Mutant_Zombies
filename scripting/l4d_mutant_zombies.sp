@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.25"
+#define PLUGIN_VERSION		"1.26"
 
 /*======================================================================================
 	Plugin Info:
@@ -32,8 +32,13 @@
 ========================================================================================
 	Change Log:
 
+1.26 (10-Feb-2023)
+	- Fixed invincible Fire Mutants. Thanks to "sonic155" and "Maur0" for reporting and testing.
+	- Fixed Survivor bots from killing common infected instead of converting them to Fire Mutants.
+	- Removed the "Smoke" type key value "color" since it was never meant to exist, the smoke is a particle and color cannot be changed. Thanks to "sonic155" for reporting.
+
 1.25 (03-Feb-2023)
-	- Changed the method of converting and preventing Fire Mutants from dying. Thanks to "sonic555" for reporting.
+	- Changed the method of converting and preventing Fire Mutants from dying. Thanks to "sonic155" for reporting.
 	- Added another check to prevent invisible common remaining alive.
 
 1.24 (02-Feb-2023)
@@ -255,7 +260,6 @@ float g_fConfMindDamage, g_fConfMindDistance;
 // Smoke config variables
 int g_iConfSmokeGlow, g_iConfSmokeGlowCol, g_iConfSmokeHealth, g_iConfSmokeLimit, g_iConfSmokeRandom;
 float g_fConfSmokeDamage2, g_fConfSmokeDamage, g_fConfSmokeDistance;
-char g_sConfSmokeColor[12];
 // Spit config variables
 int g_iConfSpitEffects, g_iConfSpitGlow, g_iConfSpitGlowCol, g_iConfSpitHealth, g_iConfSpitHurt, g_iConfSpitLimit, g_iConfSpitRandom, g_iConfSpitWalk;
 float g_fConfSpitDamage, g_fConfSpitTime;
@@ -607,8 +611,20 @@ void ResetPlugin(bool all = false)
 	if( all == true )
 	{
 		for( int i = 1; i <= MaxClients; i++ )
+		{
 			if( IsClientInGame(i) )
+			{
 				SDKUnhook(i, SDKHook_OnTakeDamage, OnTakeDamage);
+			}
+		}
+
+		int entity = -1;
+		while( (entity = FindEntityByClassname(entity, "infected")) != INVALID_ENT_REFERENCE )
+		{
+			SDKUnhook(entity, SDKHook_OnTakeDamage, OnTakeDamageBomb);
+			SDKUnhook(entity, SDKHook_OnTakeDamage, OnTakeDamageFire);
+			SDKUnhook(entity, SDKHook_OnTakeDamage, OnCommonFireDamage);
+		}
 	}
 }
 
@@ -919,7 +935,6 @@ void LoadDataConfig()
 		g_fConfSmokeDamage =	hFile.GetFloat("damage",			0.0);
 		g_fConfSmokeDamage2 =	hFile.GetFloat("damage_smoke",		0.0);
 		g_fConfSmokeDistance =	hFile.GetFloat("distance",			0.0);
-		hFile.GetString("color", g_sConfSmokeColor, sizeof(g_sConfSmokeColor), "0 0 0");
 		g_iConfSmokeGlow =		hFile.GetNum("glow",				0);
 		hFile.GetString("glow_color", sTemp, sizeof(sTemp),			"");
 		g_iConfSmokeGlowCol =	GetColor(sTemp);
@@ -1470,6 +1485,7 @@ public void OnEntityCreated(int entity, const char[] classname)
 			if( (g_iCheckInferno > 0 || g_iConfFireIncen > 0) && IsCommonValidToUse(entity) )
 			{
 				SDKHook(entity, SDKHook_OnTakeDamage, OnCommonFireDamage);
+				SDKHook(entity, SDKHook_SpawnPost, OnCommonFireSpawn);
 			}
 		}
 	}
@@ -1489,6 +1505,7 @@ public void OnEntityCreated(int entity, const char[] classname)
 				if( IsCommonValidToUse(common) )
 				{
 					SDKHook(common, SDKHook_OnTakeDamage, OnCommonFireDamage);
+					SDKHook(entity, SDKHook_SpawnPost, OnCommonFireSpawn);
 				}
 			}
 		}
@@ -1521,66 +1538,15 @@ public void OnEntityDestroyed(int entity)
 			{
 				int common = -1;
 				while( (common = FindEntityByClassname(common, "infected")) != INVALID_ENT_REFERENCE )
+				{
 					if( IsCommonValidToUse(common) )
+					{
 						SDKUnhook(common, SDKHook_OnTakeDamage, OnCommonFireDamage);
+					}
+				}
 			}
 		}
 	}
-}
-
-
-
-// ====================================================================================================
-//					ONTAKEDAMAGE - FROM FIRE - COMMON INFECTED
-// ====================================================================================================
-Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
-{
-	// DMG_BULLET|DMG_BURN
-	if( (damagetype == 10 || damagetype == -2147483638) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
-	{
-		MutantFireSetup(victim, false);
-
-		SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-
-		return Plugin_Handled;
-	}
-
-	// DMG_BURN / (DMG_BURN|DMG_PREVENT_PHYSICS_FORCE) / (DMG_BURN|DMG_DIRECT)
-	else if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 ) // Fire damage
-	{
-		if( g_iConfFireWalk && inflictor > MaxClients && IsValidEntity(inflictor) )
-		{
-			static char sTemp[20];
-			GetEdictClassname(inflictor, sTemp, sizeof(sTemp));
-
-			if( strcmp(sTemp, "inferno") && strcmp(sTemp, "fire_cracker_blast") )
-			{
-				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-				return Plugin_Continue;
-			}
-		}
-		else
-		{
-			SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-			return Plugin_Continue;
-		}
-
-		// Validate model.
-		if( IsCommonValidToUse(victim) )
-		{
-			if( GetRandomInt(1, 100) <= g_iConfFireWalk )
-			{
-				MutantFireSetup(victim, false);
-
-				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-
-				return Plugin_Handled;
-			}
-		}
-	}
-
-	SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
-	return Plugin_Continue;
 }
 
 
@@ -1960,6 +1926,8 @@ void ReigniteCommon(int common)
 
 	// Fix common standing still and not attacking
 	CreateTimer(0.1, TimerTarget, EntIndexToEntRef(common));
+	CreateTimer(0.3, TimerTarget, EntIndexToEntRef(common));
+	CreateTimer(0.5, TimerTarget, EntIndexToEntRef(common));
 }
 
 Action TimerTarget(Handle timer, int common)
@@ -1980,35 +1948,114 @@ Action TimerTarget(Handle timer, int common)
 	return Plugin_Continue;
 }
 
+
+
+// ====================================================================================================
+//					ONTAKEDAMAGE - FROM FIRE - COMMON INFECTED
+// ====================================================================================================
+void OnCommonFireSpawn(int entity)
+{
+	SDKHook(entity, SDKHook_SpawnPost, OnCommonFireSpawn);
+	g_iFireHealth[entity] = GetEntProp(entity, Prop_Data, "m_iHealth");
+}
+
+Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+{
+	if( (damagetype & (DMG_BULLET|DMG_BURN) == (DMG_BULLET|DMG_BURN)) && g_iConfFireIncen && GetRandomInt(1, 100) <= g_iConfFireIncen ) // Incendiary bullets
+	{
+		MutantFireSetup(victim, false);
+
+		SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+
+		return Plugin_Handled;
+	}
+
+	// DMG_BURN / (DMG_BURN|DMG_PREVENT_PHYSICS_FORCE) / (DMG_BURN|DMG_DIRECT)
+	else if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 ) // Fire damage
+	{
+		if( g_iConfFireWalk && inflictor > MaxClients && IsValidEntity(inflictor) )
+		{
+			static char sTemp[20];
+			GetEdictClassname(inflictor, sTemp, sizeof(sTemp));
+
+			if( strcmp(sTemp, "inferno") && strcmp(sTemp, "fire_cracker_blast") )
+			{
+				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+				return Plugin_Continue;
+			}
+		}
+		else
+		{
+			SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+			return Plugin_Continue;
+		}
+
+		// Validate model.
+		if( IsCommonValidToUse(victim) )
+		{
+			if( GetRandomInt(1, 100) <= g_iConfFireWalk )
+			{
+				MutantFireSetup(victim, false);
+
+				SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+
+				return Plugin_Handled;
+			}
+		}
+	}
+
+	SDKUnhook(victim, SDKHook_OnTakeDamage, OnCommonFireDamage);
+	return Plugin_Continue;
+}
+
 Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
+	// Fix health bug where the game tries to kill common with a huge amount of damage, usually 10000.0 or the commons health + 1
+	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
+	if( health < 0 )
+	{
+		if( g_iFireHealth[victim] - damage > 0.0 )
+		{
+			ReigniteCommon(victim);
+
+			g_iFireHealth[victim] -= RoundFloat(damage);
+			SetEntProp(victim, Prop_Data, "m_iHealth", g_iFireHealth[victim]);
+			return Plugin_Handled;
+		}
+
+		// Allow to die
+		SDKUnhook(victim, SDKHook_OnTakeDamage, OnTakeDamageFire);
+
+		return Plugin_Continue;
+	}
+
 	// Infected is broken and would render invisible, so don't fix them from death
 	if( GetEntProp(victim, Prop_Send, "m_bClientSideRagdoll") != 0 )
 	{
 		SDKUnhook(victim, SDKHook_OnTakeDamage, OnTakeDamageFire);
-		return Plugin_Continue;
+
+		damage = 10000.0;
+		return Plugin_Changed;
+	}
+
+	// Fix invincible bug
+	if( GetEntProp(victim, Prop_Data, "m_lifeState") != 0 )
+	{
+		SetEntProp(victim, Prop_Data, "m_lifeState", 0);
 	}
 
 	// DMG_BURN or (DMG_BURN | DMG_PREVENT_PHYSICS_FORCE) or (DMG_BURN | DMG_DIRECT)
-	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
+	if( health > 0 && damage == 1.0 && (damagetype == 8 || damagetype == 2056 || damagetype == 268435464) )
 	{
 		return Plugin_Handled;
 	}
 
-	// Fix health bug where the game tries to kill common with a huge amount of damage
-	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
-	if( health < 0 && g_iFireHealth[victim] - damage > 0 )
-	{
-		ReigniteCommon(victim);
-
-		SetEntProp(victim, Prop_Data, "m_iHealth", g_iFireHealth[victim] - RoundFloat(damage));
-		return Plugin_Handled;
-	}
-
+	// Drop fire on damage chance
 	if( g_iConfFireDrop2 && attacker > 0 && attacker <= MaxClients && GetRandomInt(1, 100) <= g_iConfFireDrop2 )
 		FireDrop(victim);
 
-	g_iFireHealth[victim] = GetEntProp(victim, Prop_Data, "m_iHealth") - RoundFloat(damage);
+	// Store health value
+	g_iFireHealth[victim] = health - RoundFloat(damage);
 
 	return Plugin_Continue;
 }
@@ -2631,11 +2678,11 @@ int CreateParticle(int client, int type)
 
 	switch( type )
 	{
-		case ENUM_PARTICLE_SPIT:	DispatchKeyValue(entity, "effect_name", PARTICLE_SPIT);	// Spit - Goo Dribble
+		case ENUM_PARTICLE_SPIT:	DispatchKeyValue(entity, "effect_name", PARTICLE_SPIT);		// Spit - Goo Dribble
 		case ENUM_PARTICLE_SPIT2:	DispatchKeyValue(entity, "effect_name", PARTICLE_SPIT2);	// Spit - Smoke
-		case ENUM_PARTICLE_FIRE:	DispatchKeyValue(entity, "effect_name", PARTICLE_FIRE);	// Fire
+		case ENUM_PARTICLE_FIRE:	DispatchKeyValue(entity, "effect_name", PARTICLE_FIRE);		// Fire
 		case ENUM_PARTICLE_FIRE2:	DispatchKeyValue(entity, "effect_name", PARTICLE_FIRE2);	// Fire sparks
-		case ENUM_PARTICLE_BOMB:	DispatchKeyValue(entity, "effect_name", PARTICLE_BOMB);	// Bomb
+		case ENUM_PARTICLE_BOMB:	DispatchKeyValue(entity, "effect_name", PARTICLE_BOMB);		// Bomb
 		case ENUM_PARTICLE_BOMB1:	DispatchKeyValue(entity, "effect_name", PARTICLE_BOMB1);	// Bomb flare
 		case ENUM_PARTICLE_BOMB2:	DispatchKeyValue(entity, "effect_name", PARTICLE_BOMB2);	// Bomb flare
 		case ENUM_PARTICLE_BOMB3:	DispatchKeyValue(entity, "effect_name", PARTICLE_BOMB3);	// Bomb explosion
