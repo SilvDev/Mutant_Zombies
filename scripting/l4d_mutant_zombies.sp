@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.26"
+#define PLUGIN_VERSION		"1.27"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.27 (19-Feb-2023)
+	- Fixed Fire Mutants taking fire damage from other sources. Thanks to "BystanderZK" for reporting.
 
 1.26 (10-Feb-2023)
 	- Fixed invincible Fire Mutants. Thanks to "sonic155" and "Maur0" for reporting and testing.
@@ -1610,6 +1613,8 @@ Action TimerSpawnCommon(Handle timer, int entity)
 
 void OnSpawnCommon(int common)
 {
+	SDKUnhook(common, SDKHook_SpawnPost, OnSpawnCommon);
+
 	if( IsValidEntity(common) )
 		SpawnCommon(common);
 }
@@ -1955,7 +1960,7 @@ Action TimerTarget(Handle timer, int common)
 // ====================================================================================================
 void OnCommonFireSpawn(int entity)
 {
-	SDKHook(entity, SDKHook_SpawnPost, OnCommonFireSpawn);
+	SDKUnhook(entity, SDKHook_SpawnPost, OnCommonFireSpawn);
 	g_iFireHealth[entity] = GetEntProp(entity, Prop_Data, "m_iHealth");
 }
 
@@ -2011,7 +2016,7 @@ Action OnCommonFireDamage(int victim, int &attacker, int &inflictor, float &dama
 Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
 	// Fix health bug where the game tries to kill common with a huge amount of damage, usually 10000.0 or the commons health + 1
-	int health = GetEntProp(victim, Prop_Data, "m_iHealth");
+	int health = GetEntProp(victim, Prop_Data, "m_iHealth") - RoundFloat(damage);
 	if( health < 0 )
 	{
 		if( g_iFireHealth[victim] - damage > 0.0 )
@@ -2045,7 +2050,7 @@ Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage
 	}
 
 	// DMG_BURN or (DMG_BURN | DMG_PREVENT_PHYSICS_FORCE) or (DMG_BURN | DMG_DIRECT)
-	if( health > 0 && damage == 1.0 && (damagetype == 8 || damagetype == 2056 || damagetype == 268435464) )
+	if( damagetype == 8 || damagetype == 2056 || damagetype == 268435464 )
 	{
 		return Plugin_Handled;
 	}
@@ -2055,7 +2060,7 @@ Action OnTakeDamageFire(int victim, int &attacker, int &inflictor, float &damage
 		FireDrop(victim);
 
 	// Store health value
-	g_iFireHealth[victim] = health - RoundFloat(damage);
+	g_iFireHealth[victim] = health;
 
 	return Plugin_Continue;
 }
