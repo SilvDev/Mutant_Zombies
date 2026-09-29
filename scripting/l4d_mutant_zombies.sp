@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.29"
+#define PLUGIN_VERSION		"1.30"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,10 @@
 
 ========================================================================================
 	Change Log:
+
+1.30 (29-Sep-2026)
+	- Fixed the last two "Mind" effect types not working because the config value was being clamped.
+	- Fixed command "sm_mutantmind" not spawning the specified type if the effect type is not allowed in the config.
 
 1.29 (14-Mar-2026)
 	- Another attempt to fix Fire Mutants becoming invincible. Thanks to "replay_84" for reporting.
@@ -244,6 +248,8 @@ int g_iInfectedSmoke[MAX_ENTS][3];
 int g_iInfectedSpit[MAX_ENTS][3]; // [0] = Common infected, [1] = ParticleA, [2] = ParticleB
 int g_iInfectedTesla[MAX_ENTS][2];
 int g_iFireHealth[2048 + 1];
+
+Handle g_hTimerMindEffect;
 
 // Global variables
 int g_iCheckInferno, g_iLoadStatus, g_iPlayerSpawn, g_iRoundStart;
@@ -929,7 +935,7 @@ void LoadDataConfig()
 		g_fConfMindDamage =		hFile.GetFloat("damage",			0.0);
 		g_fConfMindDistance =	hFile.GetFloat("distance",			0.0);
 		g_iConfMindEffects =	hFile.GetNum("effects",				0);
-		g_iConfMindEffects =	Clamp(g_iConfMindEffects,			63);
+		g_iConfMindEffects =	Clamp(g_iConfMindEffects,			255);
 		g_iConfMindGlow =		hFile.GetNum("glow",				0);
 		hFile.GetString("glow_color", sTemp, sizeof(sTemp),			"");
 		g_iConfMindGlowCol =	GetColor(sTemp);
@@ -1368,9 +1374,19 @@ Action CmdMutantMind(int client, int args)
 	ZSpawn(client);
 
 	// Return original value.
-	if( data != -1 )
-		g_iConfMindEffects = data;
+	if( data != -1 && g_hTimerMindEffect == null )
+	{
+		g_hTimerMindEffect = CreateTimer(0.1, TimerMindReset, data);
+	}
+
 	return Plugin_Handled;
+}
+
+Action TimerMindReset(Handle timer, int data)
+{
+	g_iConfMindEffects = data;
+	g_hTimerMindEffect = null;
+	return Plugin_Continue;
 }
 
 Action CmdMutantSmoke(int client, int args)
